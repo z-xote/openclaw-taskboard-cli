@@ -14,6 +14,14 @@ import { cmdNote }     from "./commands/note.js";
 import { cmdActivity } from "./commands/activity.js";
 import { cmdDebug }    from "./commands/debug.js";
 
+import dotenv from "dotenv";
+import path from "path";
+import os from "os";
+
+dotenv.config({
+  path: path.join(os.homedir(), ".taskboard.env"),
+});
+
 // ─── Help ─────────────────────────────────────────────────────────────────────
 
 function printHelp(): void {

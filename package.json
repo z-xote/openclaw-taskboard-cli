@@ -11,6 +11,7 @@
     "build": "bun build --compile --target=bun --outfile=taskboard src/index.ts"
   },
   "dependencies": {
+    "dotenv": "^17.3.1",
     "mongodb": "^6.0.0"
   },
   "devDependencies": {

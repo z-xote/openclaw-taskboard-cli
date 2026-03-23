@@ -1,5 +1,5 @@
 [INIT]: openclaw-taskboard-cli
-# v0.1.0 | Focus: Terminal CLI foundation
+# v0.1.1 | Focus: ENV Update
 -------------------------------- ✦ DETAILS ✦ --------------------------------
 
 ## TASKS
