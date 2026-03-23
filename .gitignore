@@ -1,0 +1,15 @@
+# env — never commit real credentials
+.env
+
+# compiled binary
+taskboard
+
+# deps
+node_modules/
+
+# bun
+bun.lockb
+.bun/
+
+# OS
+.DS_Store
