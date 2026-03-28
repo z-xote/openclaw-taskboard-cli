@@ -33,19 +33,21 @@ export async function cmdDebug(flags: ParsedFlags): Promise<void> {
   let out = h("credential sources");
   out += row("config file", CONFIG_PATH);
 
-  if (envUri) {
-    out += row("$MONGO_URI",      C.yellow + "SET — this wins over config file" + C.reset);
-    out += row("  resolved to",   redactUri(envUri));
-  } else {
-    out += row("$MONGO_URI",      C.dim + "not set" + C.reset);
-  }
-
   out += row(
     "config mongo-uri",
     cfgUri ? redactUri(cfgUri) : C.dim + "not set" + C.reset
   );
 
-  const activeUri = envUri ?? cfgUri;
+  if (envUri) {
+    out += row("$MONGO_URI", cfgUri
+      ? C.dim + "set (ignored — config file takes priority)" + C.reset
+      : C.yellow + "set — used as fallback (no config URI)" + C.reset);
+    out += row("  resolved to", redactUri(envUri));
+  } else {
+    out += row("$MONGO_URI", C.dim + "not set" + C.reset);
+  }
+
+  const activeUri = cfgUri ?? envUri;
   if (!activeUri) {
     out += `\n  ${C.red}✗ no URI found — run: taskboard config set mongo-uri "..."${C.reset}\n`;
     process.stdout.write(out);
@@ -53,7 +55,7 @@ export async function cmdDebug(flags: ParsedFlags): Promise<void> {
   }
 
   out += row("active URI",    C.green + redactUri(activeUri) + C.reset);
-  out += row("active source", envUri ? "shell env $MONGO_URI" : "config file");
+  out += row("active source", cfgUri ? "config file" : "shell env $MONGO_URI");
   process.stdout.write(out);
 
   // ── DB connection ─────────────────────────────────────────────────────────

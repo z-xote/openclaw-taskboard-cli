@@ -1,53 +1,51 @@
-[CLEANUP]: Remove dotenv + tighten debug command
-# v0.1.4 | Focus: Zero external dependencies, clean debug output
+[FIX]: Flip credential priority — config file now wins over env var
+# v0.1.5 | Focus: config.json is the source of truth; $MONGO_URI is a fallback
 
 -------------------------------- ✦ DETAILS ✦ --------------------------------
 
 ## TASKS
 -----------------------------------------------------------------------------
-1. Remove dotenv dependency entirely — src/index.ts no longer imports or
-   calls dotenv.config(); package.json drops dotenv from dependencies.
-   Credentials come exclusively from the config file (taskboard config set)
-   or the MONGO_URI shell env var. No .env file involvement.
+1. Flip resolution priority in src/db.ts resolveCredentials():
+   - Before: process.env.MONGO_URI ?? cfg.mongoUri  (env wins)
+   - After:  cfg.mongoUri ?? process.env.MONGO_URI  (config wins)
+   Same flip applied to DB_NAME resolution.
 
-2. Gate verbose DB diagnostics behind --verbose in `taskboard debug`:
-   - Default (no flag): shows credential sources + connection check (counts)
-     with a hint line to pass --verbose for more.
-   - --verbose: full output — status/priority/panel distributions, index
-     list, and sample document. Same content as before, now opt-in.
+2. Update comment block in db.ts to reflect the new priority order:
+   1. ~/.config/taskboard/config.json  (highest)
+   2. Shell env MONGO_URI / DB_NAME    (fallback)
+   3. Hard-coded DB_NAME default       (last resort)
 
-3. Clean up src/db.ts — remove temporary [db] console.error lines that
-   were added for inline debugging. resolveCredentials() is clean again.
+3. Update src/commands/debug.ts credential display to match new priority:
+   - config mongo-uri is now shown first (it's the primary source)
+   - $MONGO_URI now shows context-aware status:
+       · If config URI exists: "set (ignored — config file takes priority)"
+       · If no config URI:     "set — used as fallback (no config URI)"
+   - active source label now correctly reports "config file" when cfgUri wins
+   - activeUri resolution flipped: cfgUri ?? envUri
 
 
 ## DESCRIPTION
 -----------------------------------------------------------------------------
-dotenv was included originally as a dev convenience so `bun src/index.ts`
-could read from a local .env file without extra setup. With the config
-system in place since v0.1.3, this is no longer needed — and it was
-actively causing confusion: dotenv's startup log ("injecting env (0)")
-appeared in agent output, and its CWD-based resolution meant different
-behaviour depending on where the binary was invoked from.
+The previous priority (env > config) made sense as a 12-factor pattern but
+worked against how this tool is actually used: the config file is set once
+via `taskboard config set mongo-uri` and is meant to be the stable, always-
+on credential source. The env var was causing confusion because any stale
+$MONGO_URI in the shell (or a .env loaded by a parent process) would silently
+override the config — and the debug output only said "this wins" without
+explaining why that might be wrong.
 
-Removing it entirely makes the binary's credential resolution predictable:
-MONGO_URI env var > config file > error. No file system scanning.
-
-The debug --verbose split keeps `taskboard debug` fast and readable for
-quick connection checks, while `taskboard debug --verbose` remains the
-full diagnostic tool when you need to inspect data shape or index state.
+New behaviour: config.json is the authority. $MONGO_URI still works as a
+genuine fallback (useful on machines where the config hasn't been set up),
+but it can no longer shadow a configured URI.
 
 
 ## TECHNICAL NOTES
 -----------------------------------------------------------------------------
-- bun build --compile bundles all dependencies at compile time, so removing
-  dotenv from package.json requires a fresh `bun install` before rebuilding.
+- Both db.ts and debug.ts must stay in sync on the resolution order.
+  db.ts is what actually resolves; debug.ts must mirror it exactly or the
+  "active source" label will lie.
 
-- The [db] console.error lines added in the previous session for diagnosing
-  the Linux auth issue are now removed from db.ts. That diagnostic surface
-  is fully covered by `taskboard debug` (credential source section always
-  shown) and `taskboard debug --verbose` (full details).
-
-- cmdDebug() signature changed from () to (flags: ParsedFlags) to receive
-  the verbose flag. Router in index.ts updated accordingly.
+- The debug output now lists config mongo-uri before $MONGO_URI, matching
+  the visual priority of the new resolution order.
 
 -----------------------------------------------------------------------------

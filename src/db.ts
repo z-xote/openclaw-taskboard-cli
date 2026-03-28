@@ -5,14 +5,14 @@ import { loadConfig } from "./config.js";
 // ─── Config resolution ────────────────────────────────────────────────────────
 //
 // Priority order:
-//   1. Shell environment variable MONGO_URI / DB_NAME  (highest — allows per-session overrides)
-//   2. ~/.config/taskboard/config.json                 (set once via `taskboard config set`)
+//   1. ~/.config/taskboard/config.json                 (highest — set once via `taskboard config set`)
+//   2. Shell environment variable MONGO_URI / DB_NAME  (fallback — useful when config is absent)
 //   3. Hard-coded fallback for DB_NAME only
 
 function resolveCredentials(): { uri: string | undefined; dbName: string } {
   const cfg    = loadConfig();
-  const uri    = process.env.MONGO_URI ?? cfg.mongoUri;
-  const dbName = process.env.DB_NAME   ?? cfg.dbName ?? "xote-openclaw";
+  const uri    = cfg.mongoUri ?? process.env.MONGO_URI;
+  const dbName = cfg.dbName   ?? process.env.DB_NAME ?? "xote-openclaw";
   return { uri, dbName };
 }
 
