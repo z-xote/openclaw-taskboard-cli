@@ -1,10 +1,20 @@
 import { MongoClient, type Collection, type Db } from "mongodb";
 import type { Task, Activity } from "./types.js";
+import { loadConfig } from "./config.js";
 
-// ─── Config ──────────────────────────────────────────────────────────────────
+// ─── Config resolution ────────────────────────────────────────────────────────
+//
+// Priority order:
+//   1. Shell environment variable MONGO_URI / DB_NAME  (highest — allows per-session overrides)
+//   2. ~/.config/taskboard/config.json                 (set once via `taskboard config set`)
+//   3. Hard-coded fallback for DB_NAME only
 
-const MONGO_URI = process.env.MONGO_URI;
-const DB_NAME   = process.env.DB_NAME ?? "xote-openclaw";
+function resolveCredentials(): { uri: string | undefined; dbName: string } {
+  const cfg    = loadConfig();
+  const uri    = process.env.MONGO_URI ?? cfg.mongoUri;
+  const dbName = process.env.DB_NAME   ?? cfg.dbName ?? "xote-openclaw";
+  return { uri, dbName };
+}
 
 // ─── Singleton ───────────────────────────────────────────────────────────────
 
@@ -20,14 +30,20 @@ export interface DbHandle {
 export async function getDb(): Promise<DbHandle> {
   if (_taskboard && _activity) return { taskboard: _taskboard, activity: _activity };
 
-  if (!MONGO_URI) {
-    console.error("✗ MONGO_URI not set — add it to .env or export it in your shell");
+  const { uri, dbName } = resolveCredentials();
+
+  if (!uri) {
+    console.error(
+      "✗ MongoDB URI not found.\n" +
+      "  Set it once:  taskboard config set mongo-uri \"mongodb+srv://...\"\n" +
+      "  Or per-session: export MONGO_URI=\"...\""
+    );
     process.exit(1);
   }
 
-  _client    = new MongoClient(MONGO_URI);
+  _client    = new MongoClient(uri);
   await _client.connect();
-  const db: Db = _client.db(DB_NAME);
+  const db: Db = _client.db(dbName);
 
   _taskboard = db.collection<Task>("taskboard");
   _activity  = db.collection<Activity>("activity");

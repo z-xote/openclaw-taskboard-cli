@@ -1,60 +1,66 @@
-[PERF]: Plain Text Default Output
-# v0.1.2 | Focus: Agent-safe output
+[FEATURE]: Persistent Config + Self-Sufficient Binary
+# v0.1.3 | Focus: Binary portability & stored preferences
 
 -------------------------------- ✦ DETAILS ✦ --------------------------------
 
 ## TASKS
 -----------------------------------------------------------------------------
-1. Add pretty: boolean to ParsedFlags interface in src/types.ts
+1. Create src/config.ts — Config interface, CONFIG_PATH (~/.config/taskboard/
+   config.json), loadConfig(), saveConfig(); resolves via os.homedir() so the
+   binary can be placed anywhere without path errors
 
-2. Add --pretty / -p flag to src/flags.ts parser
+2. Create src/commands/config.ts — config subcommand with show, set <key>
+   <value>, unset <key>, reset; validates all values against typed enums
+   before writing; mongo-uri redacted in show output
 
-3. Refactor src/render.ts — convert C from static const object to
-   getter-based object backed by a module-level _pretty flag;
-   export setPretty(enabled: boolean) to toggle it
+3. Update src/db.ts — MONGO_URI and DB_NAME now resolved in priority order:
+   (1) shell env var, (2) config file, (3) hard-coded fallback for DB_NAME;
+   improved error message guides first-time setup
 
-4. Wire setPretty(flags.pretty) in src/index.ts immediately after
-   parseFlags, before any command or render call executes
+4. Update src/flags.ts — loadConfig() called at parse time so config
+   preferences (view, pretty, limit, panel) become the new defaults that
+   CLI flags override; add --no-pretty for explicit plain-text override
 
-5. Fix hardcoded \x1b escape codes in the catch block of index.ts
-   to use C.red / C.reset so they also respect --pretty
-
-6. Add --pretty to help text, INSTRUCTIONS.md filter flag table,
-   and AGENT_PROMPT.md with explicit "never pass --pretty" instruction
-
-7. Bump version to 0.1.2 in package.json and --help output
+5. Update src/index.ts — wire config command into router and help text;
+   add FIRST-RUN SETUP section to --help; bump version to 0.1.3
 
 
 ## DESCRIPTION
 -----------------------------------------------------------------------------
-AI agents were receiving ANSI escape sequences (e.g. \x1b[0m) in stdout,
-causing noise in LLM context windows and degrading structured parsing.
+Compiled binary was losing .env access when moved to /usr/local/bin or any
+directory other than the project root. Root cause: dotenv reads from CWD,
+not the binary's location — and CWD changes with every invocation.
 
-ANSI formatting is now opt-in via --pretty. Plain text is the default.
-The change required zero modifications to any command module — the C object's
-getter-based design means all existing C.xxx references silently return ""
-when _pretty is false, with no logic changes elsewhere.
+Solution: persistent config at ~/.config/taskboard/config.json, always
+reachable via os.homedir() regardless of binary location or CWD. One-time
+setup with `taskboard config set mongo-uri "..."` and the binary is
+self-sufficient from any directory forever.
 
-Humans running the CLI interactively pass --pretty to restore full color
-output. Agents never touch it.
+Config also enables stored preferences for view, pretty, limit, and panel —
+set once, inherited by every command as the new default. CLI flags still
+override config on any individual call.
 
 
 ## TECHNICAL NOTES
 -----------------------------------------------------------------------------
-- C object uses ES getter syntax (get reset() { ... }) so every access is
-  evaluated at read time against the current _pretty state. This allows
-  setPretty() to be called once at startup and affect all subsequent output
-  across all modules without passing flags into render functions.
+- os.homedir() is the correct anchor for user-scoped config. It resolves
+  from the OS user table, not from PATH or CWD, so it's immune to binary
+  location changes.
 
-- The table padding logic (widths[i] + C.bold.length + C.reset.length) still
-  works correctly: when _pretty=false C.bold returns "" so length is 0,
-  meaning no extra padding is added — exactly right since there are no ANSI
-  codes to compensate for.
+- Config loading happens inside parseFlags(), not at module load time. This
+  ensures the config is read fresh on every invocation without a separate
+  init step, and means db.ts and flags.ts both get the same config values
+  without coordinating.
 
-- --verbose output (written to stderr) also inherits the same _pretty flag
-  since it uses C.xxx from the same render module.
+- --no-pretty is a new explicit override flag. Without it, a user who sets
+  pretty=true in config has no way to get plain output for a single command
+  (useful for piping or scripting).
 
-- AGENT_PROMPT.md explicitly instructs agents to never pass --pretty,
-  preventing accidental re-introduction of escape codes in agent sessions.
+- mongo-uri is shown as redacted (scheme + host only) in `taskboard config`
+  output to prevent accidental credential exposure in terminal history.
+
+- dotenv is kept for dev-mode compatibility (bun src/index.ts from project
+  root). For the compiled binary, dotenv is a no-op when no .env exists in
+  CWD — config file takes over as the credential source.
 
 -----------------------------------------------------------------------------

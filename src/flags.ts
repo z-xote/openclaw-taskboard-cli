@@ -1,5 +1,6 @@
 import type { ParsedFlags, Status, Priority, View } from "./types.js";
 import { STATUSES, PRIORITIES, VIEWS } from "./types.js";
+import { loadConfig } from "./config.js";
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
 
@@ -12,12 +13,21 @@ function isView(v: string): v is View         { return (VIEWS      as readonly s
 /**
  * Parses process.argv (everything after "bun src/index.ts") into typed flags.
  *
+ * Default resolution order (lowest → highest priority):
+ *   1. Built-in hardcoded defaults
+ *   2. ~/.config/taskboard/config.json  (set via `taskboard config set`)
+ *   3. CLI flags passed at runtime      (always win)
+ *
  * Supports:
  *   --key value
  *   --key=value
- *   --boolean-flag   (no value, treated as true)
+ *   --boolean-flag     (no value → true)
+ *   --no-boolean-flag  (explicit false override, e.g. --no-pretty)
  */
 export function parseFlags(argv: string[]): ParsedFlags {
+  // Seed defaults from config file — CLI flags override these below
+  const cfg = loadConfig();
+
   const [command = "help", ...rest] = argv;
 
   const flags: ParsedFlags = {
@@ -26,10 +36,12 @@ export function parseFlags(argv: string[]): ParsedFlags {
     tags:        [],
     overdue:     false,
     includeDone: false,
-    view:        "standard",
-    limit:       20,
     verbose:     false,
-    pretty:      false,
+    // Config-aware defaults — CLI flags can still override
+    view:        cfg.defaultView    ?? "standard",
+    limit:       cfg.defaultLimit   ?? 20,
+    pretty:      cfg.defaultPretty  ?? false,
+    panel:       cfg.defaultPanel,
   };
 
   for (let i = 0; i < rest.length; i++) {
@@ -83,7 +95,6 @@ export function parseFlags(argv: string[]): ParsedFlags {
         break;
 
       case "blocked":
-        // --blocked (no val = true) | --blocked true | --blocked false
         flags.blocked = val !== "false";
         break;
 
@@ -100,12 +111,21 @@ export function parseFlags(argv: string[]): ParsedFlags {
         flags.verbose = true;
         break;
 
+      // ── pretty: explicit on/off overrides config default ──────────────────
       case "pretty":
       case "p":
         flags.pretty = true;
         break;
 
+      case "no-pretty":
+        flags.pretty = false;
+        break;
+
       // ── output control ────────────────────────────────────────────────────
+      // Accepts both --view full (space) and --view-full (hyphenated shorthand)
+      case "view-mini":     flags.view = "mini";     break;
+      case "view-standard": flags.view = "standard"; break;
+      case "view-full":     flags.view = "full";     break;
       case "view":
         if (val && isView(val)) flags.view = val;
         else if (val) console.error(`⚠ Invalid view "${val}". Valid: ${VIEWS.join(" | ")}`);

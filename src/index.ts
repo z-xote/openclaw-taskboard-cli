@@ -13,16 +13,18 @@ import { cmdPriority } from "./commands/priority.js";
 import { cmdNote }     from "./commands/note.js";
 import { cmdActivity } from "./commands/activity.js";
 import { cmdDebug }    from "./commands/debug.js";
+import { cmdConfig }   from "./commands/config.js";
 
+// dotenv for dev convenience (bun src/index.ts from project root)
+// For the compiled binary, credentials come from `taskboard config set mongo-uri`
 import dotenv from "dotenv";
-
 dotenv.config();
 
 // ─── Help ─────────────────────────────────────────────────────────────────────
 
 function printHelp(): void {
   console.log(`
-${C.bold}taskboard${C.reset}  v0.1.2 — openclaw terminal taskboard
+${C.bold}taskboard${C.reset}  v0.1.3 — openclaw terminal taskboard
 
 ${C.bold}USAGE${C.reset}
   taskboard <command> [args] [flags]
@@ -41,6 +43,14 @@ ${C.bold}WRITE COMMANDS${C.reset}
   ${C.cyan}priority${C.reset} <id> <priority>      Change priority
   ${C.cyan}note${C.reset}     <id> --note "..."    Add activity note
 
+${C.bold}CONFIG COMMAND${C.reset}
+  ${C.cyan}config${C.reset}                        Show current preferences
+  ${C.cyan}config${C.reset} set <key> <value>      Set a preference
+  ${C.cyan}config${C.reset} unset <key>            Clear a preference
+  ${C.cyan}config${C.reset} reset                  Clear all preferences
+
+  ${C.bold}Keys:${C.reset} mongo-uri | db-name | view | pretty | limit | panel
+
 ${C.bold}FILTER FLAGS${C.reset}  (get / search)
   --panel    <name>            Scope to panel
   --status   <todo|in_progress|done>
@@ -50,14 +60,13 @@ ${C.bold}FILTER FLAGS${C.reset}  (get / search)
   --blocked                    Only blocked tasks
   --overdue                    Past due_date, not done
   --include-done               Show done tasks (hidden by default)
-  --limit    <n>               Max results  (default 20)
+  --limit    <n>               Max results  (default from config or 20)
   --verbose                    Print filter, counts, and index info before results
-  --pretty                     Enable ANSI colors and formatting (human terminals only)
 
-${C.bold}VIEW FLAG${C.reset}  (controls columns returned)
-  --view mini       id · title · status · priority
-  --view standard   + panel · section · tags · blocked · due  ${C.dim}[default]${C.reset}
-  --view full       All fields + description (vertical card)
+${C.bold}OUTPUT FLAGS${C.reset}
+  --view     <mini|standard|full>   Column preset  (default from config or standard)
+  --pretty                          Enable ANSI colors  (default from config or off)
+  --no-pretty                       Force plain text even if config has pretty=true
 
 ${C.bold}CREATE / EDIT FLAGS${C.reset}
   --title    <text>
@@ -77,17 +86,21 @@ ${C.bold}ID FORMAT${C.reset}
   Short 8-char IDs shown in table output.
   Write commands accept the 8-char prefix OR the full 24-char ObjectId.
 
+${C.bold}FIRST-RUN SETUP${C.reset}
+  taskboard config set mongo-uri "mongodb+srv://..."
+  taskboard config set view mini
+  taskboard config set pretty true    ${C.dim}# humans only${C.reset}
+  taskboard debug                     ${C.dim}# verify connection${C.reset}
+
 ${C.bold}EXAMPLES${C.reset}
   taskboard get --panel xote --priority critical
   taskboard get --blocked --view mini
-  taskboard get --overdue --include-done
   taskboard search "auth redirect" --panel xote
   taskboard create --title "Fix token refresh" --panel xote --priority high --tag auth
   taskboard status a1b2c3d4 in_progress
-  taskboard edit a1b2c3d4 --priority critical --reason "escalated by user"
+  taskboard edit a1b2c3d4 --priority critical
   taskboard blocker a1b2c3d4 --blocked true --reason "waiting on infra team"
-  taskboard priority a1b2c3d4 critical --reason "customer-facing"
-  taskboard note a1b2c3d4 --note "checked with team, reproduces on prod"
+  taskboard note a1b2c3d4 --note "reproduced on prod, not staging"
   taskboard activity --panel xote
 `);
 }
@@ -97,7 +110,7 @@ ${C.bold}EXAMPLES${C.reset}
 const argv  = process.argv.slice(2);
 const flags = parseFlags(argv);
 
-// ANSI formatting is opt-in — agents get clean plain text by default
+// Apply pretty preference (config default, overrideable per-call via --pretty / --no-pretty)
 setPretty(flags.pretty);
 
 try {
@@ -112,6 +125,7 @@ try {
     case "note":     await cmdNote(flags);     break;
     case "activity": await cmdActivity(flags); break;
     case "debug":    await cmdDebug();         break;
+    case "config":   await cmdConfig(flags);   break;
     case "help":
     case "--help":
     case "-h":
@@ -123,5 +137,6 @@ try {
   process.stderr.write(`${C.red}✗${C.reset} ${msg}\n`);
   process.exit(1);
 } finally {
+  // config command doesn't open DB — closeDb is a no-op if nothing connected
   await closeDb();
 }
