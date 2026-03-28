@@ -1,6 +1,7 @@
 # taskboard CLI — Agent Reference
 
 Direct MongoDB taskboard access. No HTTP. Zero server dependency.
+Output is plain text by default (no ANSI codes). Add `--pretty` only for human terminal sessions.
 
 ---
 
@@ -68,6 +69,7 @@ taskboard note    <id>  --note "..."
 | `--include-done`  | boolean flag                      | Done tasks hidden by default   |
 | `--limit`         | number                            | Default 20                     |
 | `--view`          | `mini\|standard\|full`            | Output column preset           |
+| `--pretty`        | boolean flag                      | Enable ANSI colors (humans only) |
 
 ---
 

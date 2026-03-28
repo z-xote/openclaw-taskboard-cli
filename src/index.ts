@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { parseFlags } from "./flags.js";
 import { closeDb } from "./db.js";
-import { C } from "./render.js";
+import { C, setPretty } from "./render.js";
 
 import { cmdGet }      from "./commands/get.js";
 import { cmdSearch }   from "./commands/search.js";
@@ -15,18 +15,14 @@ import { cmdActivity } from "./commands/activity.js";
 import { cmdDebug }    from "./commands/debug.js";
 
 import dotenv from "dotenv";
-import path from "path";
-import os from "os";
 
-dotenv.config({
-  path: path.join(os.homedir(), ".taskboard.env"),
-});
+dotenv.config();
 
 // ─── Help ─────────────────────────────────────────────────────────────────────
 
 function printHelp(): void {
   console.log(`
-${C.bold}taskboard${C.reset}  v0.1.0 — openclaw terminal taskboard
+${C.bold}taskboard${C.reset}  v0.1.2 — openclaw terminal taskboard
 
 ${C.bold}USAGE${C.reset}
   taskboard <command> [args] [flags]
@@ -56,6 +52,7 @@ ${C.bold}FILTER FLAGS${C.reset}  (get / search)
   --include-done               Show done tasks (hidden by default)
   --limit    <n>               Max results  (default 20)
   --verbose                    Print filter, counts, and index info before results
+  --pretty                     Enable ANSI colors and formatting (human terminals only)
 
 ${C.bold}VIEW FLAG${C.reset}  (controls columns returned)
   --view mini       id · title · status · priority
@@ -100,6 +97,9 @@ ${C.bold}EXAMPLES${C.reset}
 const argv  = process.argv.slice(2);
 const flags = parseFlags(argv);
 
+// ANSI formatting is opt-in — agents get clean plain text by default
+setPretty(flags.pretty);
+
 try {
   switch (flags.command) {
     case "get":      await cmdGet(flags);      break;
@@ -120,7 +120,7 @@ try {
   }
 } catch (e) {
   const msg = e instanceof Error ? e.message : String(e);
-  process.stderr.write(`\x1b[31m✗\x1b[0m ${msg}\n`);
+  process.stderr.write(`${C.red}✗${C.reset} ${msg}\n`);
   process.exit(1);
 } finally {
   await closeDb();

@@ -29,6 +29,7 @@ export function parseFlags(argv: string[]): ParsedFlags {
     view:        "standard",
     limit:       20,
     verbose:     false,
+    pretty:      false,
   };
 
   for (let i = 0; i < rest.length; i++) {
@@ -97,6 +98,11 @@ export function parseFlags(argv: string[]): ParsedFlags {
       case "verbose":
       case "v":
         flags.verbose = true;
+        break;
+
+      case "pretty":
+      case "p":
+        flags.pretty = true;
         break;
 
       // ── output control ────────────────────────────────────────────────────

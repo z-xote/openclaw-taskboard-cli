@@ -3,20 +3,31 @@ import { timeAgo, fmtDue } from "./utils.js";
 import type { ObjectId } from "mongodb";
 
 // ─── ANSI Colors ─────────────────────────────────────────────────────────────
+//
+// Default: plain text (agent-safe, no escape codes).
+// Call setPretty(true) to enable ANSI formatting for human terminals.
+
+let _pretty = false;
+
+export function setPretty(enabled: boolean): void {
+  _pretty = enabled;
+}
+
+const _a = (code: string): string => (_pretty ? code : "");
 
 export const C = {
-  reset:   "\x1b[0m",
-  bold:    "\x1b[1m",
-  dim:     "\x1b[2m",
-  red:     "\x1b[31m",
-  green:   "\x1b[32m",
-  yellow:  "\x1b[33m",
-  blue:    "\x1b[34m",
-  magenta: "\x1b[35m",
-  cyan:    "\x1b[36m",
-  white:   "\x1b[37m",
-  gray:    "\x1b[90m",
-} as const;
+  get reset()   { return _a("\x1b[0m"); },
+  get bold()    { return _a("\x1b[1m"); },
+  get dim()     { return _a("\x1b[2m"); },
+  get red()     { return _a("\x1b[31m"); },
+  get green()   { return _a("\x1b[32m"); },
+  get yellow()  { return _a("\x1b[33m"); },
+  get blue()    { return _a("\x1b[34m"); },
+  get magenta() { return _a("\x1b[35m"); },
+  get cyan()    { return _a("\x1b[36m"); },
+  get white()   { return _a("\x1b[37m"); },
+  get gray()    { return _a("\x1b[90m"); },
+};
 
 // ─── Visual Length (strips ANSI escapes) ─────────────────────────────────────
 

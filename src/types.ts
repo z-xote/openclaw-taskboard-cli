@@ -67,6 +67,7 @@ export interface ParsedFlags {
   view:        View;
   limit:       number;
   verbose:     boolean;
+  pretty:      boolean;   // ANSI color + formatting — off by default (agent-safe)
 
   // write flags
   title?:      string;

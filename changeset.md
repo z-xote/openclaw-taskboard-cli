@@ -1,71 +1,60 @@
-[INIT]: openclaw-taskboard-cli
-# v0.1.1 | Focus: ENV Update
+[PERF]: Plain Text Default Output
+# v0.1.2 | Focus: Agent-safe output
+
 -------------------------------- ✦ DETAILS ✦ --------------------------------
 
 ## TASKS
 -----------------------------------------------------------------------------
-1. Scaffold Bun + TypeScript project with package.json, tsconfig.json,
-   .gitignore, .env.example
+1. Add pretty: boolean to ParsedFlags interface in src/types.ts
 
-2. Define fully typed domain layer in src/types.ts — Status, Priority, View,
-   Actor, ActionType enums; Task, Activity, ParsedFlags interfaces
+2. Add --pretty / -p flag to src/flags.ts parser
 
-3. Build MongoDB singleton in src/db.ts with clean connect/close lifecycle
-   and env-based config
+3. Refactor src/render.ts — convert C from static const object to
+   getter-based object backed by a module-level _pretty flag;
+   export setPretty(enabled: boolean) to toggle it
 
-4. Build typed flag parser in src/flags.ts supporting --key value,
-   --key=value, and boolean flags; validates enums at parse time with warnings
+4. Wire setPretty(flags.pretty) in src/index.ts immediately after
+   parseFlags, before any command or render call executes
 
-5. Build shared utilities in src/utils.ts — resolveTaskId (8-char prefix OR
-   full 24-char ObjectId), timeAgo, fmtDue, logActivity
+5. Fix hardcoded \x1b escape codes in the catch block of index.ts
+   to use C.red / C.reset so they also respect --pretty
 
-6. Build terminal renderer in src/render.ts — ANSI-colored tables with
-   ANSI-safe padding, full-card layout for --view full, diff-style write
-   output, activity log table
+6. Add --pretty to help text, INSTRUCTIONS.md filter flag table,
+   and AGENT_PROMPT.md with explicit "never pass --pretty" instruction
 
-7. Implement all 9 command modules: get, search, create, status, edit,
-   blocker, priority, note, activity
-
-8. Wire CLI entry point in src/index.ts with top-level router, error handler,
-   and formatted --help output
-
-9. Write INSTRUCTIONS.md — condensed agent reference covering views,
-   commands, flags, enums, ID format, and common usage patterns
+7. Bump version to 0.1.2 in package.json and --help output
 
 
 ## DESCRIPTION
 -----------------------------------------------------------------------------
-Initial release of openclaw-taskboard-cli — a terminal-native taskboard
-client for openclaw agents. Connects directly to MongoDB (no HTTP layer),
-eliminating context bloat from JSON API responses.
+AI agents were receiving ANSI escape sequences (e.g. \x1b[0m) in stdout,
+causing noise in LLM context windows and degrading structured parsing.
 
-Agents interact via structured CLI commands with typed enums and three
-output views (mini, standard, full) to control token density.
+ANSI formatting is now opt-in via --pretty. Plain text is the default.
+The change required zero modifications to any command module — the C object's
+getter-based design means all existing C.xxx references silently return ""
+when _pretty is false, with no logic changes elsewhere.
 
-All 9 server-side operations are replicated as CLI commands with diff-style
-write confirmation and ANSI-coloured table output.
+Humans running the CLI interactively pass --pretty to restore full color
+output. Agents never touch it.
 
 
 ## TECHNICAL NOTES
 -----------------------------------------------------------------------------
-- Direct MongoDB connection via MongoClient singleton — no HTTP round-trip.
-  Agents run taskboard as a subprocess and read stdout; no server process
-  needed.
+- C object uses ES getter syntax (get reset() { ... }) so every access is
+  evaluated at read time against the current _pretty state. This allows
+  setPretty() to be called once at startup and affect all subsequent output
+  across all modules without passing flags into render functions.
 
-- View enum (mini | standard | full) controls which columns are returned
-  per query, allowing agents to trade token cost for data fidelity at call
-  time.
+- The table padding logic (widths[i] + C.bold.length + C.reset.length) still
+  works correctly: when _pretty=false C.bold returns "" so length is 0,
+  meaning no extra padding is added — exactly right since there are no ANSI
+  codes to compensate for.
 
-- ID resolution supports both 8-char prefix (shown in tables) and full
-  24-char ObjectId. Prefix match scans _id projections in JS — acceptable
-  for taskboard scale, avoids index complexity.
+- --verbose output (written to stderr) also inherits the same _pretty flag
+  since it uses C.xxx from the same render module.
 
-- Done tasks are excluded from all queries by default. Pass --include-done
-  or --status done to surface them. Overdue flag overrides status filter.
+- AGENT_PROMPT.md explicitly instructs agents to never pass --pretty,
+  preventing accidental re-introduction of escape codes in agent sessions.
 
-- Bun's built-in .env loader handles MONGO_URI. The compiled binary
-  (bun run build) reads .env from the current working directory at runtime.
-
-- triggered_by is hardcoded to "ai" for all CLI mutations — matching the
-  intent that this tool is agent-operated. Override not exposed in v0.1.0.
 -----------------------------------------------------------------------------
