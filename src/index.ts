@@ -15,16 +15,11 @@ import { cmdActivity } from "./commands/activity.js";
 import { cmdDebug }    from "./commands/debug.js";
 import { cmdConfig }   from "./commands/config.js";
 
-// dotenv for dev convenience (bun src/index.ts from project root)
-// For the compiled binary, credentials come from `taskboard config set mongo-uri`
-import dotenv from "dotenv";
-dotenv.config();
-
 // ─── Help ─────────────────────────────────────────────────────────────────────
 
 function printHelp(): void {
   console.log(`
-${C.bold}taskboard${C.reset}  v0.1.3 — openclaw terminal taskboard
+${C.bold}taskboard${C.reset}  v0.1.4 — openclaw terminal taskboard
 
 ${C.bold}USAGE${C.reset}
   taskboard <command> [args] [flags]
@@ -33,7 +28,8 @@ ${C.bold}READ COMMANDS${C.reset}
   ${C.cyan}get${C.reset}                          List tasks  (filters below)
   ${C.cyan}search${C.reset}  <query>              Full-text search (top 10 results)
   ${C.cyan}activity${C.reset} [task_id]           Activity log  [--panel]
-  ${C.cyan}debug${C.reset}                        Connection + data diagnostics
+  ${C.cyan}debug${C.reset}                        Credential sources + connection check
+  ${C.cyan}debug --verbose${C.reset}              Full diagnostics (distributions, indexes, sample)
 
 ${C.bold}WRITE COMMANDS${C.reset}
   ${C.cyan}create${C.reset}   --title --panel      Create a task
@@ -124,7 +120,7 @@ try {
     case "priority": await cmdPriority(flags); break;
     case "note":     await cmdNote(flags);     break;
     case "activity": await cmdActivity(flags); break;
-    case "debug":    await cmdDebug();         break;
+    case "debug":    await cmdDebug(flags);    break;
     case "config":   await cmdConfig(flags);   break;
     case "help":
     case "--help":

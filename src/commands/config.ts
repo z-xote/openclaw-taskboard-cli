@@ -29,15 +29,30 @@ export async function cmdConfig(flags: ParsedFlags): Promise<void> {
   // ── show (default when no subcommand) ──────────────────────────────────────
   if (!sub || sub === "show") {
     const cfg = loadConfig();
+
+    // Resolve the URI that will actually be used, and where it came from
+    const envUri    = process.env.MONGO_URI;
+    const cfgUri    = cfg.mongoUri;
+    const activeUri = envUri ?? cfgUri;
+    const uriSource = envUri
+      ? "shell env $MONGO_URI"
+      : cfgUri
+        ? "config file"
+        : null;
+
+    const uriDisplay = activeUri
+      ? `${redact(activeUri)}  ${C.gray}[source: ${uriSource}]${C.reset}`
+      : C.red + "(not set — run: taskboard config set mongo-uri \"...\")" + C.reset;
+
     const out = [
       `${C.bold}config${C.reset}  ${C.gray}${CONFIG_PATH}${C.reset}\n\n`,
-      `  ${C.cyan}mongo-uri${C.reset}     ${cfg.mongoUri ? redact(cfg.mongoUri) : C.dim + "(not set)" + C.reset}\n`,
+      `  ${C.cyan}mongo-uri${C.reset}     ${uriDisplay}\n`,
       `  ${C.cyan}db-name${C.reset}       ${val(cfg.dbName,        "xote-openclaw")}\n`,
       `  ${C.cyan}view${C.reset}          ${val(cfg.defaultView,   "standard")}\n`,
       `  ${C.cyan}pretty${C.reset}        ${val(cfg.defaultPretty, "false")}\n`,
       `  ${C.cyan}limit${C.reset}         ${val(cfg.defaultLimit,  "20")}\n`,
       `  ${C.cyan}panel${C.reset}         ${val(cfg.defaultPanel,  "none")}\n`,
-      `\n${C.gray}  run: taskboard config set <key> <value>${C.reset}\n`,
+      `\n${C.gray}  to update: taskboard config set <key> <value>${C.reset}\n`,
     ];
     process.stdout.write(out.join(""));
     return;

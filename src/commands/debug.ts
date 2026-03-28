@@ -1,64 +1,101 @@
 import { getDb } from "../db.js";
+import { loadConfig, CONFIG_PATH } from "../config.js";
 import { C } from "../render.js";
+import type { ParsedFlags } from "../types.js";
+
+function redactUri(uri: string): string {
+  try {
+    const u = new URL(uri);
+    const user = u.username ? u.username : "???";
+    return `${u.protocol}//${user}:***@${u.host}${u.pathname}`;
+  } catch {
+    return "(unparseable URI)";
+  }
+}
 
 /**
  * `taskboard debug`
  *
- * Dumps everything you need to diagnose connection and data issues:
- *   - DB name + collection names
- *   - Document counts per collection
- *   - Status value distribution (shows real values from your data)
- *   - All indexes on the taskboard collection
- *   - First raw document (unfiltered) so you can see actual field names/values
+ * Default: credential sources + connection check (counts only).
+ * --verbose: full diagnostics — distributions, indexes, sample document.
  */
-export async function cmdDebug(): Promise<void> {
+export async function cmdDebug(flags: ParsedFlags): Promise<void> {
+  const cfg    = loadConfig();
+  const envUri = process.env.MONGO_URI;
+  const cfgUri = cfg.mongoUri;
+
+  const h = (s: string) =>
+    `\n${C.bold}${C.cyan}── ${s} ${"─".repeat(Math.max(0, 44 - s.length))}${C.reset}\n`;
+  const row = (label: string, value: string) =>
+    `  ${C.gray}${label.padEnd(20)}${C.reset}${value}\n`;
+
+  // ── Credentials (always shown) ────────────────────────────────────────────
+  let out = h("credential sources");
+  out += row("config file", CONFIG_PATH);
+
+  if (envUri) {
+    out += row("$MONGO_URI",      C.yellow + "SET — this wins over config file" + C.reset);
+    out += row("  resolved to",   redactUri(envUri));
+  } else {
+    out += row("$MONGO_URI",      C.dim + "not set" + C.reset);
+  }
+
+  out += row(
+    "config mongo-uri",
+    cfgUri ? redactUri(cfgUri) : C.dim + "not set" + C.reset
+  );
+
+  const activeUri = envUri ?? cfgUri;
+  if (!activeUri) {
+    out += `\n  ${C.red}✗ no URI found — run: taskboard config set mongo-uri "..."${C.reset}\n`;
+    process.stdout.write(out);
+    return;
+  }
+
+  out += row("active URI",    C.green + redactUri(activeUri) + C.reset);
+  out += row("active source", envUri ? "shell env $MONGO_URI" : "config file");
+  process.stdout.write(out);
+
+  // ── DB connection ─────────────────────────────────────────────────────────
   const { taskboard, activity } = await getDb();
+  const dbName = process.env.DB_NAME ?? cfg.dbName ?? "xote-openclaw";
 
-  // ── Grab raw DB handle via the collection namespace ──────────────────────
-  const dbName = process.env.DB_NAME ?? "xote-openclaw";
-
-  // Counts
   const taskCount     = await taskboard.countDocuments({});
   const activityCount = await activity.countDocuments({});
 
-  // Status distribution — what values actually exist in the data
+  out = h("connection");
+  out += row("db",             dbName);
+  out += row("taskboard coll", taskboard.collectionName);
+  out += row("activity coll",  activity.collectionName);
+  out += row("task docs",      String(taskCount));
+  out += row("activity docs",  String(activityCount));
+
+  if (!flags.verbose) {
+    out += `\n  ${C.dim}pass --verbose for full diagnostics (distributions, indexes, sample)${C.reset}\n`;
+    out += `\n${C.bold}${C.cyan}${"─".repeat(48)}${C.reset}\n\n`;
+    process.stdout.write(out);
+    return;
+  }
+
+  // ── Verbose-only: distributions + indexes + sample ────────────────────────
+
   const statusGroups = await taskboard.aggregate<{ _id: unknown; count: number }>([
     { $group: { _id: "$status", count: { $sum: 1 } } },
     { $sort:  { count: -1 } },
   ]).toArray();
 
-  // Priority distribution
   const priorityGroups = await taskboard.aggregate<{ _id: unknown; count: number }>([
     { $group: { _id: "$priority", count: { $sum: 1 } } },
     { $sort:  { count: -1 } },
   ]).toArray();
 
-  // Panel distribution
   const panelGroups = await taskboard.aggregate<{ _id: unknown; count: number }>([
     { $group: { _id: "$panel", count: { $sum: 1 } } },
     { $sort:  { count: -1 } },
   ]).toArray();
 
-  // Indexes
   const indexes = await taskboard.listIndexes().toArray();
-
-  // First raw document (no filter)
-  const sample = await taskboard.findOne({});
-
-  // ── Output ────────────────────────────────────────────────────────────────
-
-  const h = (s: string) =>
-    `\n${C.bold}${C.cyan}── ${s} ${"─".repeat(Math.max(0, 44 - s.length))}${C.reset}\n`;
-
-  const row = (label: string, value: string) =>
-    `  ${C.gray}${label.padEnd(18)}${C.reset}${value}\n`;
-
-  let out = h("connection");
-  out += row("db",               dbName);
-  out += row("taskboard coll",   taskboard.collectionName);
-  out += row("activity coll",    activity.collectionName);
-  out += row("task docs",        String(taskCount));
-  out += row("activity docs",    String(activityCount));
+  const sample  = await taskboard.findOne({});
 
   out += h("status distribution");
   if (statusGroups.length === 0) {
@@ -99,12 +136,11 @@ export async function cmdDebug(): Promise<void> {
   if (!sample) {
     out += `  ${C.red}no documents in collection${C.reset}\n`;
   } else {
-    // Pretty-print with type hints
     for (const [key, val] of Object.entries(sample)) {
       const display =
-        val instanceof Date    ? `${C.blue}${val.toISOString()}${C.reset}` :
-        val === null           ? `${C.dim}null${C.reset}` :
-        Array.isArray(val)     ? `${C.magenta}[${(val as unknown[]).join(", ")}]${C.reset}` :
+        val instanceof Date      ? `${C.blue}${val.toISOString()}${C.reset}` :
+        val === null             ? `${C.dim}null${C.reset}` :
+        Array.isArray(val)       ? `${C.magenta}[${(val as unknown[]).join(", ")}]${C.reset}` :
         typeof val === "boolean" ? (val ? C.green : C.red) + String(val) + C.reset :
         typeof val === "object"  ? `${C.gray}${JSON.stringify(val)}${C.reset}` :
                                    String(val);
@@ -113,6 +149,5 @@ export async function cmdDebug(): Promise<void> {
   }
 
   out += `\n${C.bold}${C.cyan}${"─".repeat(48)}${C.reset}\n\n`;
-
   process.stdout.write(out);
 }

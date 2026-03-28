@@ -1,66 +1,53 @@
-[FEATURE]: Persistent Config + Self-Sufficient Binary
-# v0.1.3 | Focus: Binary portability & stored preferences
+[CLEANUP]: Remove dotenv + tighten debug command
+# v0.1.4 | Focus: Zero external dependencies, clean debug output
 
 -------------------------------- ✦ DETAILS ✦ --------------------------------
 
 ## TASKS
 -----------------------------------------------------------------------------
-1. Create src/config.ts — Config interface, CONFIG_PATH (~/.config/taskboard/
-   config.json), loadConfig(), saveConfig(); resolves via os.homedir() so the
-   binary can be placed anywhere without path errors
+1. Remove dotenv dependency entirely — src/index.ts no longer imports or
+   calls dotenv.config(); package.json drops dotenv from dependencies.
+   Credentials come exclusively from the config file (taskboard config set)
+   or the MONGO_URI shell env var. No .env file involvement.
 
-2. Create src/commands/config.ts — config subcommand with show, set <key>
-   <value>, unset <key>, reset; validates all values against typed enums
-   before writing; mongo-uri redacted in show output
+2. Gate verbose DB diagnostics behind --verbose in `taskboard debug`:
+   - Default (no flag): shows credential sources + connection check (counts)
+     with a hint line to pass --verbose for more.
+   - --verbose: full output — status/priority/panel distributions, index
+     list, and sample document. Same content as before, now opt-in.
 
-3. Update src/db.ts — MONGO_URI and DB_NAME now resolved in priority order:
-   (1) shell env var, (2) config file, (3) hard-coded fallback for DB_NAME;
-   improved error message guides first-time setup
-
-4. Update src/flags.ts — loadConfig() called at parse time so config
-   preferences (view, pretty, limit, panel) become the new defaults that
-   CLI flags override; add --no-pretty for explicit plain-text override
-
-5. Update src/index.ts — wire config command into router and help text;
-   add FIRST-RUN SETUP section to --help; bump version to 0.1.3
+3. Clean up src/db.ts — remove temporary [db] console.error lines that
+   were added for inline debugging. resolveCredentials() is clean again.
 
 
 ## DESCRIPTION
 -----------------------------------------------------------------------------
-Compiled binary was losing .env access when moved to /usr/local/bin or any
-directory other than the project root. Root cause: dotenv reads from CWD,
-not the binary's location — and CWD changes with every invocation.
+dotenv was included originally as a dev convenience so `bun src/index.ts`
+could read from a local .env file without extra setup. With the config
+system in place since v0.1.3, this is no longer needed — and it was
+actively causing confusion: dotenv's startup log ("injecting env (0)")
+appeared in agent output, and its CWD-based resolution meant different
+behaviour depending on where the binary was invoked from.
 
-Solution: persistent config at ~/.config/taskboard/config.json, always
-reachable via os.homedir() regardless of binary location or CWD. One-time
-setup with `taskboard config set mongo-uri "..."` and the binary is
-self-sufficient from any directory forever.
+Removing it entirely makes the binary's credential resolution predictable:
+MONGO_URI env var > config file > error. No file system scanning.
 
-Config also enables stored preferences for view, pretty, limit, and panel —
-set once, inherited by every command as the new default. CLI flags still
-override config on any individual call.
+The debug --verbose split keeps `taskboard debug` fast and readable for
+quick connection checks, while `taskboard debug --verbose` remains the
+full diagnostic tool when you need to inspect data shape or index state.
 
 
 ## TECHNICAL NOTES
 -----------------------------------------------------------------------------
-- os.homedir() is the correct anchor for user-scoped config. It resolves
-  from the OS user table, not from PATH or CWD, so it's immune to binary
-  location changes.
+- bun build --compile bundles all dependencies at compile time, so removing
+  dotenv from package.json requires a fresh `bun install` before rebuilding.
 
-- Config loading happens inside parseFlags(), not at module load time. This
-  ensures the config is read fresh on every invocation without a separate
-  init step, and means db.ts and flags.ts both get the same config values
-  without coordinating.
+- The [db] console.error lines added in the previous session for diagnosing
+  the Linux auth issue are now removed from db.ts. That diagnostic surface
+  is fully covered by `taskboard debug` (credential source section always
+  shown) and `taskboard debug --verbose` (full details).
 
-- --no-pretty is a new explicit override flag. Without it, a user who sets
-  pretty=true in config has no way to get plain output for a single command
-  (useful for piping or scripting).
-
-- mongo-uri is shown as redacted (scheme + host only) in `taskboard config`
-  output to prevent accidental credential exposure in terminal history.
-
-- dotenv is kept for dev-mode compatibility (bun src/index.ts from project
-  root). For the compiled binary, dotenv is a no-op when no .env exists in
-  CWD — config file takes over as the credential source.
+- cmdDebug() signature changed from () to (flags: ParsedFlags) to receive
+  the verbose flag. Router in index.ts updated accordingly.
 
 -----------------------------------------------------------------------------
